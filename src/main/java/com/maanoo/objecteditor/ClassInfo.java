@@ -97,6 +97,22 @@ public class ClassInfo {
 
     // ===
 
+    public static final HashMap<String, Class<?>> PrimitivesNameMap = new HashMap<String, Class<?>>();
+    static {
+        PrimitivesNameMap.put("void", Void.TYPE);
+        PrimitivesNameMap.put("bool", Boolean.TYPE);
+        PrimitivesNameMap.put("byte", Byte.TYPE);
+        PrimitivesNameMap.put("char", Character.TYPE);
+        PrimitivesNameMap.put("short", Short.TYPE);
+        PrimitivesNameMap.put("int", Integer.TYPE);
+        PrimitivesNameMap.put("long", Long.TYPE);
+        PrimitivesNameMap.put("float", Float.TYPE);
+        PrimitivesNameMap.put("double", Double.TYPE);
+        PrimitivesNameMap.put("string", String.class);
+    }
+
+    // ===
+
     public static final class MethodInfo {
 
         public final Method method;

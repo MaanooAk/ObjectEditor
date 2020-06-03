@@ -37,7 +37,6 @@ import javax.swing.JTree;
 import javax.swing.SwingUtilities;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.event.TreeSelectionListener;
-import javax.swing.text.JTextComponent;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
@@ -49,7 +48,7 @@ import com.maanoo.objecteditor.ClassInfo.MethodInfo.ParameterProvider;
 
 
 @SuppressWarnings("serial")
-public class ObjectEditorWindow extends JFrame implements TreeSelectionListener {
+public class ObjectEditorWindow extends JFrame {
 
     public static ObjectEditorWindow show(Object object) {
         return new ObjectEditorWindow(object);
@@ -61,16 +60,12 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
 
     private final Class<?> windowTarget;
 
-    private static final Object NoReturnObject = new Object();
-    public Object returnObject = NoReturnObject;
+    private final Tree<Node> tree;
+    private final GenericNode root;
+    private final JTextField filter;
+    private final JTextArea status;
 
-    private Tree<Node> tree;
-    private GenericNode root;
-
-    private HashMap<MethodNode, GenericNode> methodReturns = new HashMap<MethodNode, GenericNode>();
-
-    private JTextField filter;
-    private JTextComponent status;
+    private HashMap<MethodNode, GenericNode> methodReturns;
 
     private enum Option {
 
@@ -88,9 +83,12 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         ShowDuplicates,
     }
 
-    private final EnumSet<Option> options;
+    // TODO: pass the current options and parsers to children windows
 
-    public final HashMap<Class<?>, Function<String, Object>> parsers;
+    private final EnumSet<Option> options;
+    private final HashMap<Class<?>, Function<String, Object>> parsers;
+
+    private static final String FilterClassPrefix = "$";
 
     public ObjectEditorWindow(Object object) throws HeadlessException {
         this(object.getClass(), object, null);
@@ -117,10 +115,11 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         });
         parsers.put(String.class, parsers.get(CharSequence.class));
 
+        methodReturns = new HashMap<MethodNode, GenericNode>();
+
         root = new GenericNode(null, 0, cla, object);
         tree = new Tree<Node>(root, new TreeRenderer());
 
-        tree.addTreeSelectionListener(this);
         tree.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -379,6 +378,14 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         add(status, BorderLayout.SOUTH);
         this.status = status;
 
+        tree.addTreeSelectionListener(new TreeSelectionListener() {
+            @Override
+            public void valueChanged(TreeSelectionEvent e) {
+                final Node n = tree.getSelectedNode();
+                status.setText(n == null ? "" : n.getStatusText());
+            }
+        });
+
         refreshNodes();
         tree.expandRow(0);
         tree.selectFirst();
@@ -392,20 +399,6 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         setLocationRelativeTo(null);
     }
 
-    HashMap<String, Class<?>> classMap = new HashMap<String, Class<?>>();
-    {
-        classMap.put("int", Integer.TYPE);
-        classMap.put("long", Long.TYPE);
-        classMap.put("double", Double.TYPE);
-        classMap.put("float", Float.TYPE);
-        classMap.put("bool", Boolean.TYPE);
-        classMap.put("char", Character.TYPE);
-        classMap.put("byte", Byte.TYPE);
-        classMap.put("void", Void.TYPE);
-        classMap.put("short", Short.TYPE);
-        classMap.put("string", String.class);
-    }
-
     private void refreshNodes() {
         final boolean[] expanded = reloadNodes();
 
@@ -417,12 +410,13 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         final Pattern pattern;
         Class<?> target;
 
-        if (filterText.startsWith("$")) {
+        if (filterText.startsWith(FilterClassPrefix)) {
             pattern = null;
+            final String type = filterText.substring(FilterClassPrefix.length());
             try {
-                target = Class.forName(filterText.substring(1));
+                target = Class.forName(type);
             } catch (final ClassNotFoundException e) {
-                target = classMap.get(filterText.substring(1));
+                target = ClassInfo.PrimitivesNameMap.get(type);
             }
         } else {
             pattern = filterText.isEmpty() ? null : Pattern.compile(filterText, Pattern.CASE_INSENSITIVE);
@@ -459,8 +453,6 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                 return (t instanceof MethodNode);
             }
         }, false);
-
-//      tree.expand();
     }
 
     private void filterNode(Node node, final Pattern pattern, Class<?> target) {
@@ -502,30 +494,6 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         }
     }
 
-    @Override
-    public void valueChanged(TreeSelectionEvent e) {
-        final Node n = tree.getSelectedNode();
-
-        if (n == null) {
-            status.setText("");
-
-        } else if (n instanceof MethodNode) {
-            final MethodNode node = (MethodNode) n;
-
-            status.setText(node.method.toString() + " :: " + node.method.getDeclaringClass());
-
-        } else if (n instanceof GenericNode) {
-            final GenericNode node = (GenericNode) n;
-
-            final int count = node.getAllChildCount();
-            if (count == 0) {
-                status.setText((node.field != null ? node.field : (node.index + "")) + "");
-            } else {
-                status.setText("(" + count + ") " + (node.field != null ? node.field : (node.index + "")));
-            }
-        }
-    }
-
     private static abstract class Node extends Tree.Node {
 
         public Node copy() {
@@ -541,6 +509,8 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         }
 
         protected abstract String getString();
+
+        protected abstract String getStatusText();
     }
 
     private static abstract class HolderNode extends Node {
@@ -574,6 +544,11 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         }
 
         @Override
+        protected String getStatusText() {
+            return method.toString() + " :: " + method.getDeclaringClass();
+        }
+
+        @Override
         public int hashCode() {
             final int prime = 31;
             int result = 1;
@@ -600,6 +575,8 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
     }
 
     private static class GenericNode extends Node {
+
+        // TODO: split into sub classes
 
         public final Object holder;
         public final Field field;
@@ -644,6 +621,16 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
             }
         }
 
+        @Override
+        protected String getStatusText() {
+            final int count = getAllChildCount();
+            if (count == 0) {
+                return ((field != null ? field : (index + "")) + "");
+            } else {
+                return ("(" + count + ") " + (field != null ? field : (index + "")));
+            }
+        }
+
     }
 
     private static class CommandNode extends Node {
@@ -659,6 +646,11 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         @Override
         protected String getString() {
             return text;
+        }
+
+        @Override
+        protected String getStatusText() {
+            return "right click to expand";
         }
 
     }
@@ -763,8 +755,10 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         }
     }
 
-    // TODO change how the wait is performed
-    public JDialog dialog;
+    // TODO change how the wait is performed, this is a mess
+    private JDialog dialog;
+    private static final Object NoReturnObject = new Object();
+    public Object returnObject = NoReturnObject;
 
     public void setReturnObject(Object returnObject) {
         this.returnObject = returnObject;
@@ -910,7 +904,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         return object.getClass().getName() + "@" + System.identityHashCode(object);
     }
 
-    // =====
+    // ===
 
     private static class Tree<T extends Tree.Node> extends JTree {
 
@@ -930,18 +924,36 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
 
         }
 
-        public static class RectangleIcon implements Icon {
+        private static abstract class BaseIcon implements Icon {
 
             private final Icon base;
-            private final Color color;
-            private final boolean fill;
-            private final int space;
 
-            public RectangleIcon(Icon base, Color color, boolean mode, int space) {
+            protected final Color color;
+            protected final boolean fill;
+            protected final int space;
+
+            public BaseIcon(Icon base, Color color, boolean fill, int space) {
                 this.base = base;
                 this.color = color;
-                this.fill = mode;
+                this.fill = fill;
                 this.space = space;
+            }
+
+            @Override
+            public int getIconWidth() {
+                return base.getIconWidth();
+            }
+
+            @Override
+            public int getIconHeight() {
+                return base.getIconHeight();
+            }
+        }
+
+        public static class RectangleIcon extends BaseIcon {
+
+            public RectangleIcon(Icon base, Color color, boolean fill, int space) {
+                super(base, color, fill, space);
             }
 
             @Override
@@ -956,30 +968,12 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                 }
             }
 
-            @Override
-            public int getIconWidth() {
-                return base.getIconWidth();
-            }
-
-            @Override
-            public int getIconHeight() {
-                return base.getIconHeight();
-            }
-
         }
 
-        public static class CircleIcon implements Icon {
+        public static class CircleIcon extends BaseIcon {
 
-            private final Icon base;
-            private final Color color;
-            private final boolean fill;
-            private final int space;
-
-            public CircleIcon(Icon base, Color color, boolean mode, int space) {
-                this.base = base;
-                this.color = color;
-                this.fill = mode;
-                this.space = space;
+            public CircleIcon(Icon base, Color color, boolean fill, int space) {
+                super(base, color, fill, space);
             }
 
             @Override
@@ -993,17 +987,6 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                     g.drawOval(x + space, y + getIconHeight() / 2 - side / 2, side, side);
                 }
             }
-
-            @Override
-            public int getIconWidth() {
-                return base.getIconWidth();
-            }
-
-            @Override
-            public int getIconHeight() {
-                return base.getIconHeight();
-            }
-
         }
 
         public static abstract class Renderer<T extends Node> extends DefaultTreeCellRenderer {
@@ -1016,6 +999,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
             }
 
             @Override
+            @SuppressWarnings("unchecked")
             public final Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded,
                     boolean leaf, int row, boolean hasFocus) {
                 final Component component = super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row,
@@ -1041,10 +1025,12 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
             getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
         }
 
+        @SuppressWarnings("unchecked")
         public T getSelectedNode() {
             return (T) getLastSelectedPathComponent();
         }
 
+        @SuppressWarnings("unchecked")
         public T getNodeAtRow(int index) {
             return (T) getPathForRow(index).getLastPathComponent();
         }
@@ -1072,7 +1058,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
 
     }
 
-    // ====
+    // ===
 
     public interface Function<T, R> {
         R apply(T t);

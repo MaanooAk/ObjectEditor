@@ -11,10 +11,7 @@ public class ObjectEditor {
         map.put("key1", "value1");
         map.put("key2", "value2");
 
-//        System.out.println(ClassInfo.of(map.getClass()));
-
-        final ObjectEditorWindow w = new ObjectEditorWindow(map);
-        final ObjectEditorWindow w2 = new ObjectEditorWindow(w);
+        new ObjectEditorWindow(new ObjectEditorWindow(map));
     }
 
 }
