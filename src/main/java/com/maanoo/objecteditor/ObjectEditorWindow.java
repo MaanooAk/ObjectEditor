@@ -99,15 +99,16 @@ public class ObjectEditorWindow extends JFrame {
         this.windowObject = object;
         this.windowTarget = target;
 
-        options = EnumSet.noneOf(Option.class);
-        options.add(Option.ShowFieldsPublic);
-        options.add(Option.ShowFieldsPrivate);
-        options.add(Option.ShowMethodsVoid);
-        options.add(Option.ShowMethodsNonVoid);
+        options = EnumSet.of(
+                Option.ShowFieldsPublic,
+                Option.ShowFieldsPrivate,
+                Option.ShowMethodsVoid,
+                Option.ShowMethodsNonVoid);
+
+        // TODO: extend the support for custom parsers
 
         parsers = new HashMap<Class<?>, Function<String, Object>>();
         parsers.put(CharSequence.class, new Function<String, Object>() {
-
             @Override
             public Object apply(String t) {
                 return t;
@@ -121,238 +122,25 @@ public class ObjectEditorWindow extends JFrame {
         tree = new Tree<Node>(root, new TreeRenderer());
 
         tree.addMouseListener(new MouseAdapter() {
+
             @Override
             public void mousePressed(MouseEvent e) {
-                if (SwingUtilities.isRightMouseButton(e)) {
-                    final int selRow = tree.getRowForLocation(e.getX(), e.getY());
-                    if (selRow > -1) {
-                        final TreePath selPath = tree.getPathForLocation(e.getX(), e.getY());
-                        tree.setSelectionPath(selPath);
+                if (!SwingUtilities.isRightMouseButton(e)) return;
+                final JPopupMenu popup = new JPopupMenu();
 
-                        final Node n = (Node) selPath.getLastPathComponent();
+                final int selRow = tree.getRowForLocation(e.getX(), e.getY());
+                if (selRow > -1) {
+                    // select the right clicked node
+                    final TreePath selPath = tree.getPathForLocation(e.getX(), e.getY());
+                    tree.setSelectionPath(selPath);
 
-                        final JPopupMenu popup = new JPopupMenu();
-                        if (n instanceof MethodNode) {
-                            final MethodNode node = (MethodNode) n;
-
-                            final JMenuItem item = new JMenuItem(
-                                    "Call method" + (node.method.getParameterCount() > 0 ? " ..." : ""));
-
-                            item.addActionListener(new ActionListener() {
-                                @Override
-                                public void actionPerformed(ActionEvent e) {
-                                    final MethodInfo method = node.method;
-
-                                    final Class<?> returnType = method.returnType;
-                                    final Object ret = method.invoke(node.holder, new ParameterProvider() {
-                                        @Override
-                                        public Object get(Class<?> c, String name) {
-                                            return inputValue(c, name);
-                                        }
-                                    });
-
-                                    if (returnType != void.class) {
-                                        final Class<?> cc = (ret instanceof Throwable) ? ret.getClass()
-                                                : pickClass(returnType, ret);
-
-                                        final GenericNode retNode = new GenericNode(null, 0, cc, ret);
-//                                            generateNodes(retNode, new HashMap<Object, Node>());
-
-                                        methodReturns.put(node, retNode);
-                                    }
-
-                                    refreshNodes();
-
-                                }
-                            });
-                            popup.add(item);
-
-                        } else if (n instanceof CommandNode) {
-                            final CommandNode node = (CommandNode) n;
-
-                            final boolean[] expanded = reloadNodes();
-
-                            final Node parent = (Node) node.getParent();
-                            parent.removeAllChildren();
-                            final Node copy = ((Node) node.command).copy();
-                            generateNodes((GenericNode) copy);
-                            parent.add(copy);
-
-                            reloadNodes(expanded);
-
-                        } else {
-                            final GenericNode node = (GenericNode) n;
-
-                            if (windowTarget != null) {
-                                final JMenuItem item = new JMenuItem("Accept");
-                                item.addActionListener(new ActionListener() {
-                                    @Override
-                                    public void actionPerformed(ActionEvent e) {
-                                        setReturnObject(node.object);
-                                    }
-                                });
-                                popup.add(item);
-                                popup.addSeparator();
-                            }
-
-                            if (!node.clas.isPrimitive() && node.object != null) {
-                                final JMenuItem item = new JMenuItem("Popup");
-                                item.setEnabled(node.object != null && !node.clas.isPrimitive());
-
-                                if (item.isEnabled()) item.addActionListener(new ActionListener() {
-                                    @Override
-                                    public void actionPerformed(ActionEvent e) {
-                                        new ObjectEditorWindow(node.object);
-                                    }
-                                });
-                                popup.add(item);
-                            }
-                            {
-                                final JMenuItem item = new JMenuItem("Edit field");
-                                item.addActionListener(new ActionListener() {
-                                    @Override
-                                    public void actionPerformed(ActionEvent e) {
-
-                                        try {
-                                            final Class<?> input = node.clas;
-                                            final Object param = inputValue(input,
-                                                    node.field == null ? ("[" + node.index + "]")
-                                                            : node.field.getName());
-
-                                            if (node.field != null) {
-                                                node.field.set(node.holder, param);
-
-                                            } else {
-                                                Array.set(node.holder, node.index, param);
-                                            }
-
-                                            refreshNodes();
-
-                                        } catch (final ReflectiveOperationException ex) {
-                                            ex.printStackTrace();
-                                        }
-                                    }
-                                });
-
-                                popup.add(item);
-                            }
-                        }
-
-                        if (n.getChildCount() > 0) {
-                            popup.addSeparator();
-                            {
-                                final JMenuItem item = new JMenuItem("Expand");
-                                item.addActionListener(new ActionListener() {
-
-                                    @Override
-                                    public void actionPerformed(ActionEvent e) {
-                                        final int offset = tree.getSelectionRows()[0];
-                                        final int count = n.getAllChildCount();
-                                        for (int i = 0; i < count; i++) {
-                                            tree.expandRow(i + offset);
-                                        }
-                                    }
-                                });
-                                popup.add(item);
-                            }
-                        }
-
-                        popup.show(tree, e.getX(), e.getY());
-                    } else {
-
-                        final JPopupMenu popup = new JPopupMenu();
-
-                        popup.add(menuItemCheckBoxesHeader("Show fields",
-                                Option.ShowFieldsPublic, Option.ShowFieldsPrivate, Option.ShowFieldsTransient));
-                        popup.add(menuItemCheckBox("... public", Option.ShowFieldsPublic));
-                        popup.add(menuItemCheckBox("... non public", Option.ShowFieldsPrivate));
-                        popup.add(menuItemCheckBox("... transient", Option.ShowFieldsTransient));
-                        popup.addSeparator();
-                        popup.add(menuItemCheckBoxesHeader("Show methods",
-                                Option.ShowMethodsNonVoid, Option.ShowMethodsVoid, Option.ShowMethodsWithParams));
-                        popup.add(menuItemCheckBox("... non void", Option.ShowMethodsNonVoid));
-                        popup.add(menuItemCheckBox("... void", Option.ShowMethodsVoid));
-                        popup.add(menuItemCheckBox("... with params", Option.ShowMethodsWithParams));
-                        popup.addSeparator();
-                        popup.add(menuItemCheckBox("Show null elements", Option.ShowNullElements));
-                        popup.add(menuItemCheckBox("Show object internals", Option.ShowObjectInternals));
-                        popup.add(menuItemCheckBox("Show string elements", Option.ShowStringInternals));
-                        popup.add(menuItemCheckBox("Show duplicates", Option.ShowDuplicates));
-                        popup.addSeparator();
-                        {
-                            final JMenuItem item = new JMenuItem("Expand all");
-                            item.addActionListener(new ActionListener() {
-                                @Override
-                                public void actionPerformed(ActionEvent e) {
-                                    for (int i = 0; i < tree.getRowCount(); i++) {
-                                        tree.expandRow(i);
-                                    }
-                                }
-                            });
-                            popup.add(item);
-                        }
-                        {
-                            final JMenuItem item = new JMenuItem("Expand one");
-                            item.addActionListener(new ActionListener() {
-                                @Override
-                                public void actionPerformed(ActionEvent e) {
-                                    for (int i = tree.getRowCount() - 1; i >= 0; i--) {
-                                        tree.expandRow(i);
-                                    }
-                                }
-                            });
-                            popup.add(item);
-                        }
-                        {
-                            final JMenuItem item = new JMenuItem("Refresh");
-                            item.addActionListener(new ActionListener() {
-                                @Override
-                                public void actionPerformed(ActionEvent e) {
-                                    refreshNodes();
-                                }
-                            });
-                            popup.add(item);
-                        }
-
-                        popup.show(tree, e.getX(), e.getY());
-                    }
+                    final Node n = (Node) selPath.getLastPathComponent();
+                    generatePopupMenuForNode(n, popup);
+                } else {
+                    generatePopupMenuForTree(popup);
                 }
-            }
 
-            private JMenuItem menuItemCheckBoxesHeader(String text, final Option... option) {
-
-                final JMenuItem item = new JMenuItem(text);
-                item.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        final List<Option> list = Arrays.asList(option);
-                        if (Collections.disjoint(options, list)) {
-                            options.addAll(list);
-                        } else {
-                            options.removeAll(list);
-                        }
-                        refreshNodes();
-                    }
-                });
-                return item;
-            }
-
-            private JCheckBoxMenuItem menuItemCheckBox(String text, final Option option) {
-
-                final JCheckBoxMenuItem item = new JCheckBoxMenuItem(text);
-                item.setState(options.contains(option));
-                item.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        if (item.getState()) {
-                            options.add(option);
-                        } else {
-                            options.remove(option);
-                        }
-                        refreshNodes();
-                    }
-                });
-                return item;
+                popup.show(tree, e.getX(), e.getY());
             }
         });
 
@@ -372,11 +160,9 @@ public class ObjectEditorWindow extends JFrame {
             }
         });
 
-        final JTextArea status = new JTextArea();
+        status = new JTextArea();
         status.setMargin(new Insets(2, 2, 2, 2));
-//        status.setLineWrap(true);
         add(status, BorderLayout.SOUTH);
-        this.status = status;
 
         tree.addTreeSelectionListener(new TreeSelectionListener() {
             @Override
@@ -394,10 +180,231 @@ public class ObjectEditorWindow extends JFrame {
 
         setMinimumSize(new Dimension(500, 600));
         setVisible(true);
-//        setAlwaysOnTop(true);
 
         setLocationRelativeTo(null);
     }
+
+    // == Popup menus
+
+    private void generatePopupMenuForTree(final JPopupMenu popup) {
+        popup.add(menuItemCheckBoxesHeader("Show fields",
+                Option.ShowFieldsPublic, Option.ShowFieldsPrivate, Option.ShowFieldsTransient));
+        popup.add(menuItemCheckBox("... public", Option.ShowFieldsPublic));
+        popup.add(menuItemCheckBox("... non public", Option.ShowFieldsPrivate));
+        popup.add(menuItemCheckBox("... transient", Option.ShowFieldsTransient));
+        popup.addSeparator();
+        popup.add(menuItemCheckBoxesHeader("Show methods",
+                Option.ShowMethodsNonVoid, Option.ShowMethodsVoid, Option.ShowMethodsWithParams));
+        popup.add(menuItemCheckBox("... non void", Option.ShowMethodsNonVoid));
+        popup.add(menuItemCheckBox("... void", Option.ShowMethodsVoid));
+        popup.add(menuItemCheckBox("... with params", Option.ShowMethodsWithParams));
+        popup.addSeparator();
+        popup.add(menuItemCheckBox("Show null elements", Option.ShowNullElements));
+        popup.add(menuItemCheckBox("Show object internals", Option.ShowObjectInternals));
+        popup.add(menuItemCheckBox("Show string elements", Option.ShowStringInternals));
+        popup.add(menuItemCheckBox("Show duplicates", Option.ShowDuplicates));
+        popup.addSeparator();
+        {
+            final JMenuItem item = new JMenuItem("Expand all");
+            item.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    for (int i = 0; i < tree.getRowCount(); i++) {
+                        tree.expandRow(i);
+                    }
+                }
+            });
+            popup.add(item);
+        }
+        {
+            final JMenuItem item = new JMenuItem("Expand one");
+            item.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    for (int i = tree.getRowCount() - 1; i >= 0; i--) {
+                        tree.expandRow(i);
+                    }
+                }
+            });
+            popup.add(item);
+        }
+        {
+            final JMenuItem item = new JMenuItem("Refresh");
+            item.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    refreshNodes();
+                }
+            });
+            popup.add(item);
+        }
+    }
+
+    private void generatePopupMenuForNode(final Node n, final JPopupMenu popup) {
+
+        if (n instanceof MethodNode) {
+            final MethodNode node = (MethodNode) n;
+
+            final JMenuItem item = new JMenuItem(
+                    "Call method" + (node.method.getParameterCount() > 0 ? " ..." : ""));
+
+            item.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    final MethodInfo method = node.method;
+
+                    final Class<?> returnType = method.returnType;
+                    final Object ret = method.invoke(node.holder, new ParameterProvider() {
+                        @Override
+                        public Object get(Class<?> c, String name) {
+                            return inputValue(c, name);
+                        }
+                    });
+
+                    if (returnType != void.class) {
+                        final Class<?> cc = (ret instanceof Throwable) ? ret.getClass()
+                                : pickClass(returnType, ret);
+
+                        final GenericNode retNode = new GenericNode(null, 0, cc, ret);
+//                                    generateNodes(retNode, new HashMap<Object, Node>());
+
+                        methodReturns.put(node, retNode);
+                    }
+
+                    refreshNodes();
+
+                }
+            });
+            popup.add(item);
+
+        } else if (n instanceof CommandNode) {
+            final CommandNode node = (CommandNode) n;
+
+            final boolean[] expanded = reloadNodes();
+
+            final Node parent = (Node) node.getParent();
+            parent.removeAllChildren();
+            final Node copy = ((Node) node.command).copy();
+            generateNodes((GenericNode) copy);
+            parent.add(copy);
+
+            reloadNodes(expanded);
+
+        } else {
+            final GenericNode node = (GenericNode) n;
+
+            if (windowTarget != null) {
+                final JMenuItem item = new JMenuItem("Accept");
+                item.addActionListener(new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        setReturnObject(node.object);
+                    }
+                });
+                popup.add(item);
+                popup.addSeparator();
+            }
+
+            if (!node.clas.isPrimitive() && node.object != null) {
+                final JMenuItem item = new JMenuItem("Popup");
+                item.setEnabled(node.object != null && !node.clas.isPrimitive());
+
+                if (item.isEnabled()) item.addActionListener(new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        new ObjectEditorWindow(node.object);
+                    }
+                });
+                popup.add(item);
+            }
+            {
+                final JMenuItem item = new JMenuItem("Edit field");
+                item.addActionListener(new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+
+                        try {
+                            final Class<?> input = node.clas;
+                            final Object param = inputValue(input,
+                                    node.field == null ? ("[" + node.index + "]")
+                                            : node.field.getName());
+
+                            if (node.field != null) {
+                                node.field.set(node.holder, param);
+
+                            } else {
+                                Array.set(node.holder, node.index, param);
+                            }
+
+                            refreshNodes();
+
+                        } catch (final ReflectiveOperationException ex) {
+                            ex.printStackTrace();
+                        }
+                    }
+                });
+
+                popup.add(item);
+            }
+        }
+
+        if (n.getChildCount() > 0) {
+            popup.addSeparator();
+            {
+                final JMenuItem item = new JMenuItem("Expand");
+                item.addActionListener(new ActionListener() {
+
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        final int offset = tree.getSelectionRows()[0];
+                        final int count = n.getAllChildCount();
+                        for (int i = 0; i < count; i++) {
+                            tree.expandRow(i + offset);
+                        }
+                    }
+                });
+                popup.add(item);
+            }
+        }
+    }
+
+    private JMenuItem menuItemCheckBoxesHeader(String text, final Option... option) {
+
+        final JMenuItem item = new JMenuItem(text);
+        item.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                final List<Option> list = Arrays.asList(option);
+                if (Collections.disjoint(options, list)) {
+                    options.addAll(list);
+                } else {
+                    options.removeAll(list);
+                }
+                refreshNodes();
+            }
+        });
+        return item;
+    }
+
+    private JCheckBoxMenuItem menuItemCheckBox(String text, final Option option) {
+
+        final JCheckBoxMenuItem item = new JCheckBoxMenuItem(text);
+        item.setState(options.contains(option));
+        item.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (item.getState()) {
+                    options.add(option);
+                } else {
+                    options.remove(option);
+                }
+                refreshNodes();
+            }
+        });
+        return item;
+    }
+
+    // == Nodes
 
     private void refreshNodes() {
         final boolean[] expanded = reloadNodes();
