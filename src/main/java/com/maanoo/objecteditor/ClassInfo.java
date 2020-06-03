@@ -103,12 +103,14 @@ public class ClassInfo {
 
         public final Parameter[] parameters;
         public final Class<?>[] parametersTypes;
+        public final Class<?> returnType;
 
         public MethodInfo(Method method) {
             this.method = method;
 
             parameters = method.getParameters();
             parametersTypes = method.getParameterTypes();
+            returnType = method.getReturnType();
         }
 
         public Class<?> getDeclaringClass() {
@@ -117,10 +119,6 @@ public class ClassInfo {
 
         public String getName() {
             return method.getName();
-        }
-
-        public Class<?> getReturnType() {
-            return method.getReturnType();
         }
 
         public int getParameterCount() {
@@ -170,7 +168,6 @@ public class ClassInfo {
 
             return sb.toString();
         }
-
     }
 
 }
