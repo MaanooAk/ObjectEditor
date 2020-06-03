@@ -147,7 +147,8 @@ public class ClassInfo {
             }
         }
 
-        public String getString() {
+        @Override
+        public String toString() {
             final StringBuilder sb = new StringBuilder();
 
             sb.append(method.getName());

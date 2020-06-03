@@ -110,6 +110,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         parsers = new HashMap<Class<?>, Function<String, Object>>();
         parsers.put(CharSequence.class, new Function<String, Object>() {
 
+            @Override
             public Object apply(String t) {
                 return t;
             }
@@ -139,11 +140,13 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                                     "Call method" + (node.method.getParameterCount() > 0 ? " ..." : ""));
 
                             item.addActionListener(new ActionListener() {
+                                @Override
                                 public void actionPerformed(ActionEvent e) {
                                     final MethodInfo method = node.method;
 
                                     final Class<?> returnType = method.returnType;
                                     final Object ret = method.invoke(node.holder, new ParameterProvider() {
+                                        @Override
                                         public Object get(Class<?> c, String name) {
                                             return inputValue(c, name);
                                         }
@@ -184,6 +187,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                             if (windowTarget != null) {
                                 final JMenuItem item = new JMenuItem("Accept");
                                 item.addActionListener(new ActionListener() {
+                                    @Override
                                     public void actionPerformed(ActionEvent e) {
                                         setReturnObject(node.object);
                                     }
@@ -197,6 +201,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                                 item.setEnabled(node.object != null && !node.clas.isPrimitive());
 
                                 if (item.isEnabled()) item.addActionListener(new ActionListener() {
+                                    @Override
                                     public void actionPerformed(ActionEvent e) {
                                         new ObjectEditorWindow(node.object);
                                     }
@@ -206,6 +211,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                             {
                                 final JMenuItem item = new JMenuItem("Edit field");
                                 item.addActionListener(new ActionListener() {
+                                    @Override
                                     public void actionPerformed(ActionEvent e) {
 
                                         try {
@@ -239,6 +245,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                                 final JMenuItem item = new JMenuItem("Expand");
                                 item.addActionListener(new ActionListener() {
 
+                                    @Override
                                     public void actionPerformed(ActionEvent e) {
                                         final int offset = tree.getSelectionRows()[0];
                                         final int count = n.getAllChildCount();
@@ -276,8 +283,11 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                         {
                             final JMenuItem item = new JMenuItem("Expand all");
                             item.addActionListener(new ActionListener() {
+                                @Override
                                 public void actionPerformed(ActionEvent e) {
-                                    tree.expand();
+                                    for (int i = 0; i < tree.getRowCount(); i++) {
+                                        tree.expandRow(i);
+                                    }
                                 }
                             });
                             popup.add(item);
@@ -285,6 +295,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                         {
                             final JMenuItem item = new JMenuItem("Expand one");
                             item.addActionListener(new ActionListener() {
+                                @Override
                                 public void actionPerformed(ActionEvent e) {
                                     for (int i = tree.getRowCount() - 1; i >= 0; i--) {
                                         tree.expandRow(i);
@@ -296,6 +307,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                         {
                             final JMenuItem item = new JMenuItem("Refresh");
                             item.addActionListener(new ActionListener() {
+                                @Override
                                 public void actionPerformed(ActionEvent e) {
                                     refreshNodes();
                                 }
@@ -312,6 +324,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
 
                 final JMenuItem item = new JMenuItem(text);
                 item.addActionListener(new ActionListener() {
+                    @Override
                     public void actionPerformed(ActionEvent e) {
                         final List<Option> list = Arrays.asList(option);
                         if (Collections.disjoint(options, list)) {
@@ -330,6 +343,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                 final JCheckBoxMenuItem item = new JCheckBoxMenuItem(text);
                 item.setState(options.contains(option));
                 item.addActionListener(new ActionListener() {
+                    @Override
                     public void actionPerformed(ActionEvent e) {
                         if (item.getState()) {
                             options.add(option);
@@ -353,6 +367,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         add(filter, BorderLayout.NORTH);
         filter.addActionListener(new ActionListener() {
 
+            @Override
             public void actionPerformed(ActionEvent e) {
                 refreshNodes();
             }
@@ -439,6 +454,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         }
 
         tree.expand(new Predicate<ObjectEditorWindow.Node>() {
+            @Override
             public boolean test(Node t) {
                 return (t instanceof MethodNode);
             }
@@ -486,6 +502,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         }
     }
 
+    @Override
     public void valueChanged(TreeSelectionEvent e) {
         final Node n = tree.getSelectedNode();
 
@@ -515,11 +532,6 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
             throw new RuntimeException();
         }
 
-        @Override
-        public boolean expand() {
-            return true;
-        }
-
         private String string;
 
         @Override
@@ -528,7 +540,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
             return string = getString();
         }
 
-        public abstract String getString();
+        protected abstract String getString();
     }
 
     private static abstract class HolderNode extends Node {
@@ -557,8 +569,8 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         }
 
         @Override
-        public String getString() {
-            return method.getString();
+        protected String getString() {
+            return method.toString();
         }
 
         @Override
@@ -622,13 +634,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         }
 
         @Override
-        public boolean expand() {
-//            if (entity.getClass().isPrimitive()) return false;
-            return true;// getChildCount() > 0;
-        }
-
-        @Override
-        public String getString() {
+        protected String getString() {
 
             if (clas.isPrimitive() || clas == String.class || object == null) {
                 return (field == null ? ("[" + index + "]") : field.getName()) + " : " + clas.getSimpleName()
@@ -651,7 +657,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
         }
 
         @Override
-        public String getString() {
+        protected String getString() {
             return text;
         }
 
@@ -740,6 +746,8 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
             return parsers.get(input).apply(text);
 
         } else {
+
+            // TODO this needs a clean up
 
             final ObjectEditorWindow sub = new ObjectEditorWindow(windowObject.getClass(), windowObject, input);
 
@@ -908,8 +916,6 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
 
         public abstract static class Node extends DefaultMutableTreeNode {
 
-            public abstract boolean expand();
-
             @Override
             public abstract String toString();
 
@@ -938,6 +944,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                 this.space = space;
             }
 
+            @Override
             public void paintIcon(Component c, Graphics g, int x, int y) {
                 final int side = getIconWidth() - 2 * space;
 
@@ -949,10 +956,12 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                 }
             }
 
+            @Override
             public int getIconWidth() {
                 return base.getIconWidth();
             }
 
+            @Override
             public int getIconHeight() {
                 return base.getIconHeight();
             }
@@ -973,6 +982,7 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                 this.space = space;
             }
 
+            @Override
             public void paintIcon(Component c, Graphics g, int x, int y) {
                 final int side = getIconWidth() - 2 * space;
 
@@ -984,10 +994,12 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
                 }
             }
 
+            @Override
             public int getIconWidth() {
                 return base.getIconWidth();
             }
 
+            @Override
             public int getIconHeight() {
                 return base.getIconHeight();
             }
@@ -1039,17 +1051,6 @@ public class ObjectEditorWindow extends JFrame implements TreeSelectionListener 
 
         public void selectFirst() {
             getSelectionModel().setSelectionPath(getPathForRow(0));
-        }
-
-        public void expand() {
-            expandRow(0);
-
-            for (int i = 1; i < getRowCount(); i++) {
-                final T node = getNodeAtRow(i);
-
-                if (node.expand()) expandRow(i);
-                else collapseRow(i);
-            }
         }
 
         public void expand(Predicate<T> condition, boolean collapse) {
