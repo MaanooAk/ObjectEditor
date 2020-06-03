@@ -37,7 +37,28 @@
 					<source>1.7</source>
 					<target>1.7</target>
 					<showWarnings>true</showWarnings>
-					<showDeprecation>true</showDeprecation>
+				</configuration>
+			</plugin>
+
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>2.21.0</version>
+				<configuration>
+					<printSummary>true</printSummary>
+				</configuration>
+			</plugin>
+
+			<plugin>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>3.0.2</version>
+				<configuration>
+					<archive>
+						<manifest>
+							<mainClass>${main.class}</mainClass>
+							<addClasspath>true</addClasspath>
+						</manifest>
+					</archive>
 				</configuration>
 			</plugin>
 
