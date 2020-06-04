@@ -450,6 +450,10 @@ public class ObjectEditorWindow {
             if (windowTarget.isArray()) {
                 final Object emptyArray = Array.newInstance(windowTarget.getComponentType(), 0);
                 root.add(new GenericNode(null, -1, emptyArray.getClass(), emptyArray));
+            } else if (windowTarget.isEnum()) {
+                for (final Object i : windowTarget.getEnumConstants()) {
+                    root.add(new GenericNode(null, -1, windowTarget, i));
+                }
             }
         }
 
@@ -670,7 +674,7 @@ public class ObjectEditorWindow {
             }
             sb.append(" : ").append(clas.getSimpleName());
 
-            if (clas.isPrimitive() || clas == String.class || object == null) {
+            if (clas.isPrimitive() || clas == String.class || clas.isEnum() || object == null) {
                 sb.append(" = ").append(object);
             }
             return sb.toString();
