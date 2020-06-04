@@ -3,7 +3,13 @@ package com.maanoo.objecteditor;
 import java.util.HashMap;
 
 
-public class ObjectEditor {
+public final class ObjectEditor {
+
+    private ObjectEditor() {}
+
+    public static ObjectEditorWindow show(Object object) {
+        return new ObjectEditorWindow(object);
+    }
 
     public static void main(String[] args) {
 
@@ -11,7 +17,7 @@ public class ObjectEditor {
         map.put("key1", "value1");
         map.put("key2", "value2");
 
-        new ObjectEditorWindow(new ObjectEditorWindow(map));
+        show(new ObjectEditorWindow(map));
     }
 
 }

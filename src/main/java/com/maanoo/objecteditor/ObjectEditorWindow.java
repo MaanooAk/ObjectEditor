@@ -3,12 +3,14 @@ package com.maanoo.objecteditor;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
-import java.awt.Dialog.ModalExclusionType;
+import java.awt.Dialog.ModalityType;
 import java.awt.Dimension;
+import java.awt.Frame;
 import java.awt.Graphics;
 import java.awt.GridLayout;
 import java.awt.HeadlessException;
 import java.awt.Insets;
+import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
@@ -51,13 +53,9 @@ import com.maanoo.objecteditor.ClassInfo.MethodInfo.ParameterProvider;
 
 
 @SuppressWarnings("serial")
-public class ObjectEditorWindow extends JFrame {
+public class ObjectEditorWindow {
 
-    public static ObjectEditorWindow show(Object object) {
-        return new ObjectEditorWindow(object);
-    }
-
-    // ===
+    private final Window window;
 
     private final Object windowObject;
 
@@ -100,13 +98,14 @@ public class ObjectEditorWindow extends JFrame {
     private static final String FilterClassPrefix = "$";
 
     public ObjectEditorWindow(Object object) throws HeadlessException {
-        this(object.getClass(), object, null);
+        this(null, object, null);
     }
 
-    public ObjectEditorWindow(Class<?> cla, Object object, Class<?> target) throws HeadlessException {
-        super(target == null ? toDefaultString(object) : target.getName());
+    public ObjectEditorWindow(Window owner, Object object, Class<?> target) throws HeadlessException {
         this.windowObject = object;
         this.windowTarget = target;
+
+        final String title = (target == null ? toDefaultString(object) : target.getName());
 
         options = EnumSet.of(
                 Option.ShowFieldsPublic,
@@ -127,7 +126,7 @@ public class ObjectEditorWindow extends JFrame {
 
         methodReturns = new HashMap<MethodNode, GenericNode>();
 
-        root = new GenericNode(null, 0, cla, object);
+        root = new GenericNode(null, 0, object.getClass(), object);
         tree = new Tree<Node>(root, new TreeRenderer());
 
         tree.addMouseListener(new MouseAdapter() {
@@ -165,13 +164,6 @@ public class ObjectEditorWindow extends JFrame {
         status = new JTextArea();
         status.setMargin(new Insets(2, 2, 2, 2));
 
-        final JScrollPane treeView = new JScrollPane(tree);
-
-        setLayout(new BorderLayout());
-        add(treeView, BorderLayout.CENTER);
-        add(filter, BorderLayout.NORTH);
-        add(status, BorderLayout.SOUTH);
-
         tree.addTreeSelectionListener(new TreeSelectionListener() {
             @Override
             public void valueChanged(TreeSelectionEvent e) {
@@ -184,12 +176,36 @@ public class ObjectEditorWindow extends JFrame {
         tree.expandRow(0);
         tree.selectFirst();
 
-        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        final JScrollPane treeView = new JScrollPane(tree);
 
-        setMinimumSize(new Dimension(500, 600));
-        setVisible(true);
+        if (owner == null) {
+            final JFrame frame = new JFrame(title);
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            window = frame;
 
-        setLocationRelativeTo(null);
+        } else {
+            final JDialog dialog = new JDialog(owner, title, ModalityType.APPLICATION_MODAL);
+            window = dialog;
+        }
+
+        window.setLayout(new BorderLayout());
+        window.add(treeView, BorderLayout.CENTER);
+        window.add(filter, BorderLayout.NORTH);
+        window.add(status, BorderLayout.SOUTH);
+
+        window.setMinimumSize(new Dimension(500, 600));
+
+        window.setLocationRelativeTo(owner);
+        window.setVisible(true);
+    }
+
+    public <T> ObjectEditorWindow with(Class<T> c, StringParser<? extends T> parser) {
+        parsers.put(c, parser);
+        return this;
+    }
+
+    private Window getWindow() {
+        return window;
     }
 
     // == Popup menus
@@ -770,28 +786,27 @@ public class ObjectEditorWindow extends JFrame {
             return parsers.get(input).parse(text);
 
         } else {
-            // TODO this needs a clean up
 
-            final ObjectEditorWindow sub = new ObjectEditorWindow(windowObject.getClass(), windowObject, input);
-            sub.setLocationRelativeTo(this);
-            sub.setModalExclusionType(ModalExclusionType.APPLICATION_EXCLUDE);
-            sub.toFront();
+            final ObjectEditorWindow sub = new ObjectEditorWindow(this.getWindow(), windowObject, input);
 
-            final JDialog dialog = sub.dialog = new JDialog(this, "Input reference", true);
+            if (sub.returnObject == NoReturnObject) {
 
-            dialog.setLayout(new GridLayout(0, 1, 4, 4));
-            dialog.add(new JLabel(""));
-            dialog.add(buttonDialogAction("Return null", dialog, sub, null));
-            dialog.add(buttonDialogAction("Return empty array", dialog, sub,
-                    Array.newInstance(input.isArray() ? input.getComponentType() : input, 0)));
-            dialog.add(new JLabel(""));
-            dialog.add(buttonDialogAction("Cancel", dialog, sub, NoReturnObject));
-            dialog.pack();
+                final JDialog dialog = new JDialog((Frame) this.getWindow(), "Input reference", true);
 
-            dialog.setMinimumSize(
-                    new Dimension((int) (getMinimumSize().getWidth() / 2), (int) (dialog.getHeight() * 1.2f)));
-            dialog.setLocationRelativeTo(this);
-            dialog.setVisible(true);
+                dialog.setLayout(new GridLayout(0, 1, 4, 4));
+                dialog.add(new JLabel(""));
+                dialog.add(buttonDialogAction("Return null", dialog, sub, null));
+                dialog.add(buttonDialogAction("Return empty array", dialog, sub,
+                        Array.newInstance(input.isArray() ? input.getComponentType() : input, 0)));
+                dialog.add(new JLabel(""));
+                dialog.add(buttonDialogAction("Cancel", dialog, sub, NoReturnObject));
+                dialog.pack();
+
+                dialog.setMinimumSize(new Dimension((int) (getWindow().getMinimumSize().getWidth() / 2),
+                        (int) (dialog.getHeight() * 1.2f)));
+                dialog.setLocationRelativeTo(this.getWindow());
+                dialog.setVisible(true);
+            }
 
             if (sub.returnObject == NoReturnObject) throw new CanceledException();
             return sub.returnObject;
@@ -812,16 +827,16 @@ public class ObjectEditorWindow extends JFrame {
         return button;
     }
 
-    // TODO change how the wait is performed, this is a mess
-    private JDialog dialog;
-    private static final Object NoReturnObject = new Object();
-    public Object returnObject = NoReturnObject;
+    public static final Object NoReturnObject = new Object();
+    private Object returnObject = NoReturnObject;
 
-    public void setReturnObject(Object returnObject) {
+    private void setReturnObject(Object returnObject) {
         this.returnObject = returnObject;
+        getWindow().dispose();
+    }
 
-        if (dialog != null) dialog.setVisible(false);
-        dispose();
+    public Object getReturnObject() {
+        return returnObject;
     }
 
     // == Generate nodes
