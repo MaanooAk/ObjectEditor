@@ -311,6 +311,7 @@ public class ObjectEditorWindow extends JFrame {
                     }
                 });
                 popup.add(item);
+                popup.addSeparator();
             }
             {
                 final JMenuItem item = new JMenuItem("Edit field");
@@ -773,8 +774,8 @@ public class ObjectEditorWindow extends JFrame {
 
             final ObjectEditorWindow sub = new ObjectEditorWindow(windowObject.getClass(), windowObject, input);
             sub.setLocationRelativeTo(this);
-
             sub.setModalExclusionType(ModalExclusionType.APPLICATION_EXCLUDE);
+            sub.toFront();
 
             final JDialog dialog = sub.dialog = new JDialog(this, "Input reference", true);
 
