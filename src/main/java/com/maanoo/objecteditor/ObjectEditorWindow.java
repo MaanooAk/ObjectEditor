@@ -6,6 +6,7 @@ import java.awt.Component;
 import java.awt.Dialog.ModalExclusionType;
 import java.awt.Dimension;
 import java.awt.Graphics;
+import java.awt.GridLayout;
 import java.awt.HeadlessException;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
@@ -24,9 +25,11 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 import javax.swing.Icon;
+import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
@@ -71,7 +74,7 @@ public class ObjectEditorWindow extends JFrame {
     private enum Option {
 
         ShowFieldsPublic,
-        ShowFieldsPrivate,
+        ShowFieldsNonPublic,
         ShowFieldsTransient,
 
         ShowMethodsVoid,
@@ -87,7 +90,12 @@ public class ObjectEditorWindow extends JFrame {
     // TODO: pass the current options and parsers to children windows
 
     private final EnumSet<Option> options;
-    private final HashMap<Class<?>, Function<String, Object>> parsers;
+
+    public interface StringParser<T> {
+        T parse(String text);
+    }
+
+    private final HashMap<Class<?>, StringParser<?>> parsers;
 
     private static final String FilterClassPrefix = "$";
 
@@ -102,17 +110,17 @@ public class ObjectEditorWindow extends JFrame {
 
         options = EnumSet.of(
                 Option.ShowFieldsPublic,
-                Option.ShowFieldsPrivate,
+                Option.ShowFieldsNonPublic,
                 Option.ShowMethodsVoid,
                 Option.ShowMethodsNonVoid);
 
         // TODO: extend the support for custom parsers
 
-        parsers = new HashMap<Class<?>, Function<String, Object>>();
-        parsers.put(CharSequence.class, new Function<String, Object>() {
+        parsers = new HashMap<Class<?>, StringParser<?>>();
+        parsers.put(CharSequence.class, new StringParser<CharSequence>() {
             @Override
-            public Object apply(String t) {
-                return t;
+            public CharSequence parse(String text) {
+                return text;
             }
         });
         parsers.put(String.class, parsers.get(CharSequence.class));
@@ -189,9 +197,9 @@ public class ObjectEditorWindow extends JFrame {
     private boolean generatePopupMenuForTree(final JPopupMenu popup) {
 
         popup.add(menuItemCheckBoxesHeader("Show fields",
-                Option.ShowFieldsPublic, Option.ShowFieldsPrivate, Option.ShowFieldsTransient));
+                Option.ShowFieldsPublic, Option.ShowFieldsNonPublic, Option.ShowFieldsTransient));
         popup.add(menuItemCheckBox("... public", Option.ShowFieldsPublic));
-        popup.add(menuItemCheckBox("... non public", Option.ShowFieldsPrivate));
+        popup.add(menuItemCheckBox("... non public", Option.ShowFieldsNonPublic));
         popup.add(menuItemCheckBox("... transient", Option.ShowFieldsTransient));
         popup.addSeparator();
         popup.add(menuItemCheckBoxesHeader("Show methods",
@@ -245,12 +253,19 @@ public class ObjectEditorWindow extends JFrame {
                     final MethodInfo method = node.method;
 
                     final Class<?> returnType = method.returnType;
-                    final Object ret = method.invoke(node.holder, new ParameterProvider() {
-                        @Override
-                        public Object get(Class<?> c, String name) {
-                            return inputValue(c, name);
-                        }
-                    });
+                    Object ret;
+                    try {
+                        ret = method.invoke(node.holder, new ParameterProvider() {
+                            @Override
+                            public Object get(Class<?> c, String name) throws CanceledException {
+                                return inputValue(c, name);
+                            }
+                        });
+                    } catch (final CanceledException ex) {
+                        return;
+                    } catch (final Exception ex) {
+                        ret = ex;
+                    }
 
                     if (returnType != void.class) {
                         final Class<?> cc = (ret instanceof Throwable) ? ret.getClass()
@@ -289,6 +304,7 @@ public class ObjectEditorWindow extends JFrame {
             if (windowTarget != null) {
                 final JMenuItem item = new JMenuItem("Accept");
                 item.addActionListener(new ActionListener() {
+
                     @Override
                     public void actionPerformed(ActionEvent e) {
                         setReturnObject(node.object);
@@ -319,6 +335,8 @@ public class ObjectEditorWindow extends JFrame {
 
                         } catch (final ReflectiveOperationException ex) {
                             ex.printStackTrace();
+                        } catch (final CanceledException ex) {
+                            // canceled
                         }
                     }
                 });
@@ -350,6 +368,7 @@ public class ObjectEditorWindow extends JFrame {
                         tree.expandRow(i + offset);
                     }
                 }
+
             });
             popup.add(item);
         }
@@ -448,12 +467,11 @@ public class ObjectEditorWindow extends JFrame {
             if (expanded[i]) tree.expandRow(i);
         }
 
-        tree.expand(new Predicate<ObjectEditorWindow.Node>() {
-            @Override
-            public boolean test(Node t) {
-                return t.equals(methodReturnsLastParent);
-            }
-        }, false);
+        for (int i = 0; i < tree.getRowCount(); i++) {
+            final Node node = tree.getNodeAtRow(i);
+
+            if (node.equals(methodReturnsLastParent)) tree.expandRow(i);
+        }
         methodReturnsLastParent = null;
     }
 
@@ -714,10 +732,11 @@ public class ObjectEditorWindow extends JFrame {
 
     }
 
-    private Object inputValue(Class<?> input, String name) {
+    private Object inputValue(Class<?> input, String name) throws CanceledException {
 
         if (input.isPrimitive()) {
-            final String text = JOptionPane.showInputDialog(name + " : " + input);
+            final String text = JOptionPane.showInputDialog(this, name + " : " + input);
+            if (text == null) throw new CanceledException();
 
             if (input == boolean.class) {
                 return Boolean.parseBoolean(text);
@@ -744,26 +763,52 @@ public class ObjectEditorWindow extends JFrame {
             }
 
         } else if (parsers.containsKey(input)) {
-            final String text = JOptionPane.showInputDialog(name + " : " + input);
+            final String text = JOptionPane.showInputDialog(this, name + " : " + input);
+            if (text == null) throw new CanceledException();
 
-            return parsers.get(input).apply(text);
+            return parsers.get(input).parse(text);
 
         } else {
-
             // TODO this needs a clean up
 
             final ObjectEditorWindow sub = new ObjectEditorWindow(windowObject.getClass(), windowObject, input);
+            sub.setLocationRelativeTo(this);
 
             sub.setModalExclusionType(ModalExclusionType.APPLICATION_EXCLUDE);
 
-            final JDialog dialog = sub.dialog = new JDialog(this, true);
-            dialog.setLocationRelativeTo(null);
-            dialog.setMinimumSize(new Dimension(100, 0));
+            final JDialog dialog = sub.dialog = new JDialog(this, "Input reference", true);
+
+            dialog.setLayout(new GridLayout(0, 1, 4, 4));
+            dialog.add(new JLabel(""));
+            dialog.add(buttonDialogAction("Return null", dialog, sub, null));
+            dialog.add(buttonDialogAction("Return empty array", dialog, sub,
+                    Array.newInstance(input.isArray() ? input.getComponentType() : input, 0)));
+            dialog.add(new JLabel(""));
+            dialog.add(buttonDialogAction("Cancel", dialog, sub, NoReturnObject));
+            dialog.pack();
+
+            dialog.setMinimumSize(
+                    new Dimension((int) (getMinimumSize().getWidth() / 2), (int) (dialog.getHeight() * 1.2f)));
+            dialog.setLocationRelativeTo(this);
             dialog.setVisible(true);
 
-            if (sub.returnObject == NoReturnObject) throw new RuntimeException("No object selected");
+            if (sub.returnObject == NoReturnObject) throw new CanceledException();
             return sub.returnObject;
         }
+    }
+
+    private JButton buttonDialogAction(String text, final JDialog dialog,
+            final ObjectEditorWindow sub, final Object value) {
+
+        final JButton button = new JButton(text);
+        button.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                sub.returnObject = value;
+                dialog.setVisible(false);
+            }
+        });
+        return button;
     }
 
     // TODO change how the wait is performed, this is a mess
@@ -822,9 +867,10 @@ public class ObjectEditorWindow extends JFrame {
         final ClassInfo info = ClassInfo.of(c);
 
         final boolean optionShowFieldsPublic = options.contains(Option.ShowFieldsPublic);
-        final boolean optionShowFieldsPrivate = options.contains(Option.ShowFieldsPrivate);
+        final boolean optionShowFieldsNonPublic = options.contains(Option.ShowFieldsNonPublic);
         final boolean optionShowFieldsTransient = options.contains(Option.ShowFieldsTransient);
-        final boolean optionShowFields = optionShowFieldsPrivate || optionShowFieldsPublic || optionShowFieldsTransient;
+        final boolean optionShowFields = optionShowFieldsNonPublic || optionShowFieldsPublic
+                || optionShowFieldsTransient;
 
         for (final Field field : info.getFields()) {
 
@@ -841,7 +887,7 @@ public class ObjectEditorWindow extends JFrame {
 
             if (!optionShowFields && (cc.isPrimitive() || object == null)) continue;
             if (!optionShowFieldsPublic && Modifier.isPublic(field.getModifiers())) continue;
-            if (!optionShowFieldsPrivate && !Modifier.isPublic(field.getModifiers())) continue;
+            if (!optionShowFieldsNonPublic && !Modifier.isPublic(field.getModifiers())) continue;
             if (!optionShowFieldsTransient && Modifier.isTransient(field.getModifiers())) continue;
 
             final GenericNode node = new GenericNode(rootObject, field, cc, object);
@@ -1021,7 +1067,6 @@ public class ObjectEditorWindow extends JFrame {
 
         public Tree(T top, Renderer<T> renderer) {
             super(top);
-
             if (renderer != null) setCellRenderer(renderer);
 
             getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
@@ -1040,35 +1085,13 @@ public class ObjectEditorWindow extends JFrame {
         public void selectFirst() {
             getSelectionModel().setSelectionPath(getPathForRow(0));
         }
-
-        public void expand(Predicate<T> condition, boolean collapse) {
-            expandRow(0);
-
-            for (int i = 1; i < getRowCount(); i++) {
-                final T node = getNodeAtRow(i);
-
-                if (condition.test(node)) expandRow(i);
-                else if (collapse) collapseRow(i);
-            }
-        }
-
-        @Override
-        public TreeSelectionModel getSelectionModel() {
-
-            return super.getSelectionModel();
-        }
-
     }
 
-    // ===
+    private static final class CanceledException extends Exception {
 
-    // TODO rename
+        public CanceledException() {
+            super("Canceled");
+        }
 
-    public interface Function<T, R> {
-        R apply(T t);
-    }
-
-    public interface Predicate<T> {
-        boolean test(T t);
     }
 }

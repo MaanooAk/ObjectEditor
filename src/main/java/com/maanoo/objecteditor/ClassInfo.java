@@ -142,10 +142,10 @@ public class ClassInfo {
         }
 
         public interface ParameterProvider {
-            Object get(Class<?> c, String name);
+            Object get(Class<?> c, String name) throws Exception;
         }
 
-        public Object invoke(Object object, ParameterProvider paramProvider) {
+        public Object invoke(Object object, ParameterProvider paramProvider) throws Exception {
 
             final Object[] params = new Object[method.getParameterCount()];
 
