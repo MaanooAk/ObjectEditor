@@ -1,3 +1,4 @@
+// Copyright (c) 2020 Akritas Akritidis, see LICENSE.
 package com.maanoo.objecteditor;
 
 import java.lang.reflect.Field;
@@ -8,6 +9,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 
 
+/**
+ * Class reflection information wrapper.
+ *
+ * @author Akritas Akritidis
+ */
 public class ClassInfo {
 
     private static final HashMap<Class<?>, ClassInfo> classInfos = new HashMap<Class<?>, ClassInfo>();

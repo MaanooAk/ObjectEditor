@@ -1,7 +1,5 @@
 # ObjectEditor
 
-> Work In Progress
-
 Graphical Java live Object Editor supporting field value changes and method invocations.
 
 ![Peek 2020-06-03 23-40](https://user-images.githubusercontent.com/6997990/83687102-fa1c0e00-a5f3-11ea-989d-e4f401044794.gif)

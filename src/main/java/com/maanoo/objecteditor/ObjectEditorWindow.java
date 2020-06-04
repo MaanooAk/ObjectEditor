@@ -1,3 +1,4 @@
+// Copyright (c) 2020 Akritas Akritidis, see LICENSE.
 package com.maanoo.objecteditor;
 
 import java.awt.BorderLayout;
@@ -6,7 +7,6 @@ import java.awt.Component;
 import java.awt.Dialog.ModalityType;
 import java.awt.Dimension;
 import java.awt.Graphics;
-import java.awt.HeadlessException;
 import java.awt.Insets;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
@@ -48,6 +48,11 @@ import com.maanoo.objecteditor.ClassInfo.MethodInfo;
 import com.maanoo.objecteditor.ClassInfo.MethodInfo.ParameterProvider;
 
 
+/**
+ * ObjectEditor Swing window.
+ *
+ * @author Akritas Akritidis
+ */
 @SuppressWarnings("serial")
 public class ObjectEditorWindow {
 
@@ -84,6 +89,7 @@ public class ObjectEditorWindow {
 
     private final EnumSet<Option> options;
 
+    /** A string to object mapping. */
     public interface StringParser<T> {
         T parse(String text);
     }
@@ -92,11 +98,19 @@ public class ObjectEditorWindow {
 
     private static final String FilterClassPrefix = "$";
 
-    public ObjectEditorWindow(Object object) throws HeadlessException {
+    /**
+     * @param object the object to edit
+     */
+    public ObjectEditorWindow(Object object) {
         this(null, object, null);
     }
 
-    public ObjectEditorWindow(Window owner, Object object, Class<?> target) throws HeadlessException {
+    /**
+     * @param owner  the parent window
+     * @param object the object to view or edit
+     * @param target an optional class filter for an object to be returned
+     */
+    public ObjectEditorWindow(Window owner, Object object, Class<?> target) {
         this.windowObject = object;
         this.windowTarget = target;
 
@@ -192,13 +206,13 @@ public class ObjectEditorWindow {
         window.setVisible(true);
     }
 
+    /**
+     * @param c      the class of the mapping's object
+     * @param parser a string to object mapping for the given class
+     */
     public <T> ObjectEditorWindow with(Class<T> c, StringParser<? extends T> parser) {
         parsers.put(c, parser);
         return this;
-    }
-
-    private Window getWindow() {
-        return window;
     }
 
     // == Popup menus
@@ -767,7 +781,7 @@ public class ObjectEditorWindow {
     private Object inputValue(Class<?> input, String name, String current) throws CanceledException {
 
         if (input.isPrimitive()) {
-            final String text = JOptionPane.showInputDialog(getWindow(), name + " : " + input, current);
+            final String text = JOptionPane.showInputDialog(window, name + " : " + input, current);
             if (text == null) throw new CanceledException();
 
             else if (input == boolean.class) return Boolean.parseBoolean(text);
@@ -786,13 +800,13 @@ public class ObjectEditorWindow {
             else throw new RuntimeException(input.toString());
 
         } else if (parsers.containsKey(input)) {
-            final String text = JOptionPane.showInputDialog(getWindow(), name + " : " + input, current);
+            final String text = JOptionPane.showInputDialog(window, name + " : " + input, current);
             if (text == null) throw new CanceledException();
 
             return parsers.get(input).parse(text);
 
         } else {
-            final ObjectEditorWindow sub = new ObjectEditorWindow(getWindow(), windowObject, input);
+            final ObjectEditorWindow sub = new ObjectEditorWindow(window, windowObject, input);
 
             if (sub.returnObject == NoReturnObject) throw new CanceledException();
             return sub.returnObject;
@@ -811,7 +825,7 @@ public class ObjectEditorWindow {
 
     private void setReturnObject(Object returnObject) {
         this.returnObject = returnObject;
-        getWindow().dispose();
+        window.dispose();
     }
 
     public Object getReturnObject() {
