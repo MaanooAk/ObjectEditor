@@ -54,7 +54,6 @@ public class ObjectEditorWindow {
     private final Window window;
 
     private final Object windowObject;
-
     private final Class<?> windowTarget;
 
     private final Tree<Node> tree;
@@ -108,8 +107,6 @@ public class ObjectEditorWindow {
                 Option.ShowFieldsNonPublic,
                 Option.ShowMethodsVoid,
                 Option.ShowMethodsNonVoid);
-
-        // TODO: extend the support for custom parsers
 
         parsers = new HashMap<Class<?>, StringParser<?>>();
         parsers.put(CharSequence.class, new StringParser<CharSequence>() {
@@ -267,12 +264,7 @@ public class ObjectEditorWindow {
                     final Class<?> returnType = method.returnType;
                     Object ret;
                     try {
-                        ret = method.invoke(node.holder, new ParameterProvider() {
-                            @Override
-                            public Object get(Class<?> c, String name) throws CanceledException {
-                                return inputValue(c, name, "");
-                            }
-                        });
+                        ret = method.invoke(node.holder, inputValueParameterProvider);
                     } catch (final CanceledException ex) {
                         return;
                     } catch (final Exception ex) {
@@ -505,34 +497,34 @@ public class ObjectEditorWindow {
                 filterNode(n, pattern, target);
             }
 
-            final boolean show;
-            if (n.getChildCount() > 0) {
-                show = true;
-
-            } else if (n instanceof MethodNode) {
-                final MethodInfo method = ((MethodNode) n).method;
-
-                show = (pattern == null || pattern.matcher(method.getName()).find()) &&
-                        (target == null || target.isAssignableFrom(method.returnType));
-
-            } else if (n instanceof GenericNode) {
-                final GenericNode child = (GenericNode) n;
-
-                show = (pattern == null || pattern.matcher(child.toString()).find()) &&
-                        (target == null || target.isAssignableFrom(child.clas));
-
-            } else if (n instanceof CommandNode) {
-                show = (pattern == null && target == null);
-
-            } else {
-                show = true;
-            }
-
-            if (!show) {
+            if (!filterSingleNode(n, pattern, target)) {
                 node.remove(i);
                 i--;
             }
         }
+    }
+
+    private boolean filterSingleNode(final Node n, final Pattern pattern, Class<?> target) {
+
+        if (n.getChildCount() > 0) {
+            return true;
+
+        } else if (n instanceof MethodNode) {
+            final MethodInfo method = ((MethodNode) n).method;
+
+            return (pattern == null || pattern.matcher(method.getName()).find()) &&
+                    (target == null || target.isAssignableFrom(method.returnType));
+
+        } else if (n instanceof GenericNode) {
+            final GenericNode child = (GenericNode) n;
+
+            return (pattern == null || pattern.matcher(child.toString()).find()) &&
+                    (target == null || target.isAssignableFrom(child.clas));
+
+        } else if (n instanceof CommandNode) {
+            return (pattern == null && target == null);
+        }
+        return true;
     }
 
     private static abstract class Node extends Tree.Node {
@@ -672,12 +664,18 @@ public class ObjectEditorWindow {
 
         @Override
         protected String getStatusText() {
+            final StringBuilder sb = new StringBuilder();
+
             final int count = getAllChildCount();
-            if (count == 0) {
-                return ((field != null ? field : (index + "")) + "");
-            } else {
-                return ("(" + count + ") " + (field != null ? field : (index + "")));
+            if (count != 0) {
+                sb.append("(").append(count).append(") ");
             }
+            if (field != null) {
+                sb.append(field).append(" :: ").append(field.getDeclaringClass());
+            } else {
+                sb.append("[").append(index).append("]");
+            }
+            return sb.toString();
         }
 
     }
@@ -755,35 +753,37 @@ public class ObjectEditorWindow {
 
     // == Input values
 
+    private static final HashMap<Character, Character> charUnescape = new HashMap<Character, Character>();
+    static {
+        charUnescape.put('0', '\0');
+        charUnescape.put('n', '\n');
+        charUnescape.put('r', '\r');
+        charUnescape.put('t', '\t');
+        charUnescape.put('b', '\b');
+        charUnescape.put('f', '\f');
+        charUnescape.put('\\', '\\');
+    }
+
     private Object inputValue(Class<?> input, String name, String current) throws CanceledException {
 
         if (input.isPrimitive()) {
             final String text = JOptionPane.showInputDialog(getWindow(), name + " : " + input, current);
             if (text == null) throw new CanceledException();
 
-            if (input == boolean.class) {
-                return Boolean.parseBoolean(text);
+            else if (input == boolean.class) return Boolean.parseBoolean(text);
+            else if (input == int.class) return Integer.parseInt(text);
+            else if (input == float.class) return Float.parseFloat(text);
+            else if (input == double.class) return Double.parseDouble(text);
+            else if (input == byte.class) return Byte.parseByte(text);
+            else if (input == short.class) return Short.parseShort(text);
+            else if (input == long.class) return Long.parseLong(text);
 
-            } else if (input == int.class) {
-                return Integer.parseInt(text);
-            } else if (input == float.class) {
-                return Float.parseFloat(text);
-            } else if (input == double.class) {
-                return Double.parseDouble(text);
-            } else if (input == byte.class) {
-                return Byte.parseByte(text);
-            } else if (input == short.class) {
-                return Short.parseShort(text);
-            } else if (input == long.class) {
-                return Long.parseLong(text);
-
-            } else if (input == char.class) {
-                // TODO: parse escapes
+            else if (input == char.class) {
+                if (text.charAt(0) == '\\' && text.length() > 1) return charUnescape.get(text.charAt(1));
                 return text.charAt(0);
-
-            } else {
-                throw new RuntimeException(input.toString());
             }
+
+            else throw new RuntimeException(input.toString());
 
         } else if (parsers.containsKey(input)) {
             final String text = JOptionPane.showInputDialog(getWindow(), name + " : " + input, current);
@@ -798,6 +798,13 @@ public class ObjectEditorWindow {
             return sub.returnObject;
         }
     }
+
+    private final ParameterProvider inputValueParameterProvider = new ParameterProvider() {
+        @Override
+        public Object get(Class<?> c, String name) throws CanceledException {
+            return inputValue(c, name, "");
+        }
+    };
 
     public static final Object NoReturnObject = new Object();
     private Object returnObject = NoReturnObject;
@@ -1050,8 +1057,6 @@ public class ObjectEditorWindow {
             public abstract void handle(T node, boolean sel, boolean expanded, boolean leaf, int row, boolean hasFocus);
 
         }
-
-        //
 
         public Tree(T top, Renderer<T> renderer) {
             super(top);
