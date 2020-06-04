@@ -5,9 +5,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dialog.ModalityType;
 import java.awt.Dimension;
-import java.awt.Frame;
 import java.awt.Graphics;
-import java.awt.GridLayout;
 import java.awt.HeadlessException;
 import java.awt.Insets;
 import java.awt.Window;
@@ -27,11 +25,9 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 import javax.swing.Icon;
-import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
@@ -274,7 +270,7 @@ public class ObjectEditorWindow {
                         ret = method.invoke(node.holder, new ParameterProvider() {
                             @Override
                             public Object get(Class<?> c, String name) throws CanceledException {
-                                return inputValue(c, name);
+                                return inputValue(c, name, "");
                             }
                         });
                     } catch (final CanceledException ex) {
@@ -331,6 +327,7 @@ public class ObjectEditorWindow {
             }
             {
                 final JMenuItem item = new JMenuItem("Edit field");
+                item.setEnabled(node.field != null || node.index >= 0);
                 item.addActionListener(new ActionListener() {
                     @Override
                     public void actionPerformed(ActionEvent e) {
@@ -338,8 +335,8 @@ public class ObjectEditorWindow {
                         try {
                             final Class<?> input = node.clas;
                             final Object param = inputValue(input,
-                                    node.field == null ? ("[" + node.index + "]")
-                                            : node.field.getName());
+                                    node.field == null ? ("[" + node.index + "]") : node.field.getName(),
+                                    node.object == null ? "" : node.object.toString());
 
                             if (node.field != null) {
                                 node.field.set(node.holder, param);
@@ -347,7 +344,6 @@ public class ObjectEditorWindow {
                             } else {
                                 Array.set(node.holder, node.index, param);
                             }
-
                             refreshNodes();
 
                         } catch (final ReflectiveOperationException ex) {
@@ -442,6 +438,14 @@ public class ObjectEditorWindow {
 
         root.removeAllChildren();
         generateNodes(root);
+
+        if (windowTarget != null) {
+            root.add(new GenericNode(null, -1, windowTarget, null));
+            if (windowTarget.isArray()) {
+                final Object emptyArray = Array.newInstance(windowTarget.getComponentType(), 0);
+                root.add(new GenericNode(null, -1, emptyArray.getClass(), emptyArray));
+            }
+        }
 
         final String filterText = filter.getText();
         final Pattern pattern;
@@ -749,10 +753,12 @@ public class ObjectEditorWindow {
 
     }
 
-    private Object inputValue(Class<?> input, String name) throws CanceledException {
+    // == Input values
+
+    private Object inputValue(Class<?> input, String name, String current) throws CanceledException {
 
         if (input.isPrimitive()) {
-            final String text = JOptionPane.showInputDialog(this, name + " : " + input);
+            final String text = JOptionPane.showInputDialog(getWindow(), name + " : " + input, current);
             if (text == null) throw new CanceledException();
 
             if (input == boolean.class) {
@@ -780,51 +786,17 @@ public class ObjectEditorWindow {
             }
 
         } else if (parsers.containsKey(input)) {
-            final String text = JOptionPane.showInputDialog(this, name + " : " + input);
+            final String text = JOptionPane.showInputDialog(getWindow(), name + " : " + input, current);
             if (text == null) throw new CanceledException();
 
             return parsers.get(input).parse(text);
 
         } else {
-
-            final ObjectEditorWindow sub = new ObjectEditorWindow(this.getWindow(), windowObject, input);
-
-            if (sub.returnObject == NoReturnObject) {
-
-                final JDialog dialog = new JDialog((Frame) this.getWindow(), "Input reference", true);
-
-                dialog.setLayout(new GridLayout(0, 1, 4, 4));
-                dialog.add(new JLabel(""));
-                dialog.add(buttonDialogAction("Return null", dialog, sub, null));
-                dialog.add(buttonDialogAction("Return empty array", dialog, sub,
-                        Array.newInstance(input.isArray() ? input.getComponentType() : input, 0)));
-                dialog.add(new JLabel(""));
-                dialog.add(buttonDialogAction("Cancel", dialog, sub, NoReturnObject));
-                dialog.pack();
-
-                dialog.setMinimumSize(new Dimension((int) (getWindow().getMinimumSize().getWidth() / 2),
-                        (int) (dialog.getHeight() * 1.2f)));
-                dialog.setLocationRelativeTo(this.getWindow());
-                dialog.setVisible(true);
-            }
+            final ObjectEditorWindow sub = new ObjectEditorWindow(getWindow(), windowObject, input);
 
             if (sub.returnObject == NoReturnObject) throw new CanceledException();
             return sub.returnObject;
         }
-    }
-
-    private JButton buttonDialogAction(String text, final JDialog dialog,
-            final ObjectEditorWindow sub, final Object value) {
-
-        final JButton button = new JButton(text);
-        button.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                sub.returnObject = value;
-                dialog.setVisible(false);
-            }
-        });
-        return button;
     }
 
     public static final Object NoReturnObject = new Object();
