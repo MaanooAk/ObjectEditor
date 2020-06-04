@@ -66,6 +66,7 @@ public class ObjectEditorWindow extends JFrame {
     private final JTextArea status;
 
     private HashMap<MethodNode, GenericNode> methodReturns;
+    private MethodNode methodReturnsLastParent;
 
     private enum Option {
 
@@ -135,25 +136,18 @@ public class ObjectEditorWindow extends JFrame {
                     tree.setSelectionPath(selPath);
 
                     final Node n = (Node) selPath.getLastPathComponent();
-                    generatePopupMenuForNode(n, popup);
+                    if (!generatePopupMenuForNode(n, popup)) return;
                 } else {
-                    generatePopupMenuForTree(popup);
+                    if (!generatePopupMenuForTree(popup)) return;
                 }
 
                 popup.show(tree, e.getX(), e.getY());
             }
         });
 
-        final JScrollPane treeView = new JScrollPane(tree);
-
-        setLayout(new BorderLayout());
-        add(treeView, BorderLayout.CENTER);
-
         filter = new JTextField();
         filter.setMargin(new Insets(2, 2, 2, 2));
-        add(filter, BorderLayout.NORTH);
         filter.addActionListener(new ActionListener() {
-
             @Override
             public void actionPerformed(ActionEvent e) {
                 refreshNodes();
@@ -162,6 +156,12 @@ public class ObjectEditorWindow extends JFrame {
 
         status = new JTextArea();
         status.setMargin(new Insets(2, 2, 2, 2));
+
+        final JScrollPane treeView = new JScrollPane(tree);
+
+        setLayout(new BorderLayout());
+        add(treeView, BorderLayout.CENTER);
+        add(filter, BorderLayout.NORTH);
         add(status, BorderLayout.SOUTH);
 
         tree.addTreeSelectionListener(new TreeSelectionListener() {
@@ -186,7 +186,8 @@ public class ObjectEditorWindow extends JFrame {
 
     // == Popup menus
 
-    private void generatePopupMenuForTree(final JPopupMenu popup) {
+    private boolean generatePopupMenuForTree(final JPopupMenu popup) {
+
         popup.add(menuItemCheckBoxesHeader("Show fields",
                 Option.ShowFieldsPublic, Option.ShowFieldsPrivate, Option.ShowFieldsTransient));
         popup.add(menuItemCheckBox("... public", Option.ShowFieldsPublic));
@@ -204,43 +205,33 @@ public class ObjectEditorWindow extends JFrame {
         popup.add(menuItemCheckBox("Show string elements", Option.ShowStringInternals));
         popup.add(menuItemCheckBox("Show duplicates", Option.ShowDuplicates));
         popup.addSeparator();
-        {
-            final JMenuItem item = new JMenuItem("Expand all");
-            item.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    for (int i = 0; i < tree.getRowCount(); i++) {
-                        tree.expandRow(i);
-                    }
+        popup.add(menuItemAction("Expand all", new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                for (int i = 0; i < tree.getRowCount(); i++) {
+                    tree.expandRow(i);
                 }
-            });
-            popup.add(item);
-        }
-        {
-            final JMenuItem item = new JMenuItem("Expand one");
-            item.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    for (int i = tree.getRowCount() - 1; i >= 0; i--) {
-                        tree.expandRow(i);
-                    }
+            }
+        }));
+        popup.add(menuItemAction("Expand one", new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                for (int i = tree.getRowCount() - 1; i >= 0; i--) {
+                    tree.expandRow(i);
                 }
-            });
-            popup.add(item);
-        }
-        {
-            final JMenuItem item = new JMenuItem("Refresh");
-            item.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    refreshNodes();
-                }
-            });
-            popup.add(item);
-        }
+            }
+        }));
+        popup.add(menuItemAction("Refresh", new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                refreshNodes();
+            }
+        }));
+
+        return true;
     }
 
-    private void generatePopupMenuForNode(final Node n, final JPopupMenu popup) {
+    private boolean generatePopupMenuForNode(final Node n, final JPopupMenu popup) {
 
         if (n instanceof MethodNode) {
             final MethodNode node = (MethodNode) n;
@@ -265,10 +256,11 @@ public class ObjectEditorWindow extends JFrame {
                         final Class<?> cc = (ret instanceof Throwable) ? ret.getClass()
                                 : pickClass(returnType, ret);
 
-                        final GenericNode retNode = new GenericNode(null, 0, cc, ret);
+                        final GenericNode retNode = new GenericNode(null, -1, cc, ret);
 //                                    generateNodes(retNode, new HashMap<Object, Node>());
 
                         methodReturns.put(node, retNode);
+                        methodReturnsLastParent = node;
                     }
 
                     refreshNodes();
@@ -289,6 +281,7 @@ public class ObjectEditorWindow extends JFrame {
             parent.add(copy);
 
             reloadNodes(expanded);
+            return false;
 
         } else {
             final GenericNode node = (GenericNode) n;
@@ -299,20 +292,6 @@ public class ObjectEditorWindow extends JFrame {
                     @Override
                     public void actionPerformed(ActionEvent e) {
                         setReturnObject(node.object);
-                    }
-                });
-                popup.add(item);
-                popup.addSeparator();
-            }
-
-            if (!node.clas.isPrimitive() && node.object != null) {
-                final JMenuItem item = new JMenuItem("Popup");
-                item.setEnabled(node.object != null && !node.clas.isPrimitive());
-
-                if (item.isEnabled()) item.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        new ObjectEditorWindow(node.object);
                     }
                 });
                 popup.add(item);
@@ -346,26 +325,42 @@ public class ObjectEditorWindow extends JFrame {
 
                 popup.add(item);
             }
+
+            if (!node.clas.isPrimitive() && node.object != null) {
+                popup.addSeparator();
+
+                popup.add(menuItemAction("Popup", new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        new ObjectEditorWindow(node.object);
+                    }
+                }));
+            }
         }
 
         if (n.getChildCount() > 0) {
-            popup.addSeparator();
-            {
-                final JMenuItem item = new JMenuItem("Expand");
-                item.addActionListener(new ActionListener() {
+            final JMenuItem item = new JMenuItem("Expand");
+            item.addActionListener(new ActionListener() {
 
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        final int offset = tree.getSelectionRows()[0];
-                        final int count = n.getAllChildCount();
-                        for (int i = 0; i < count; i++) {
-                            tree.expandRow(i + offset);
-                        }
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    final int offset = tree.getSelectionRows()[0];
+                    final int count = n.getAllChildCount();
+                    for (int i = 0; i < count; i++) {
+                        tree.expandRow(i + offset);
                     }
-                });
-                popup.add(item);
-            }
+                }
+            });
+            popup.add(item);
         }
+        return true;
+    }
+
+    private JMenuItem menuItemAction(String text, final ActionListener actionListener) {
+
+        final JMenuItem item = new JMenuItem(text);
+        item.addActionListener(actionListener);
+        return item;
     }
 
     private JMenuItem menuItemCheckBoxesHeader(String text, final Option... option) {
@@ -410,8 +405,7 @@ public class ObjectEditorWindow extends JFrame {
         final boolean[] expanded = reloadNodes();
 
         root.removeAllChildren();
-        generateNodes(root, new IdentityHashMap<Object, Node>(),
-                new IdentityHashMap<Object, Node>(), 0);
+        generateNodes(root);
 
         final String filterText = filter.getText();
         final Pattern pattern;
@@ -457,9 +451,10 @@ public class ObjectEditorWindow extends JFrame {
         tree.expand(new Predicate<ObjectEditorWindow.Node>() {
             @Override
             public boolean test(Node t) {
-                return (t instanceof MethodNode);
+                return t.equals(methodReturnsLastParent);
             }
         }, false);
+        methodReturnsLastParent = null;
     }
 
     private void filterNode(Node node, final Pattern pattern, Class<?> target) {
@@ -552,7 +547,7 @@ public class ObjectEditorWindow extends JFrame {
 
         @Override
         protected String getStatusText() {
-            return method.toString() + " :: " + method.getDeclaringClass();
+            return method.method.toString() + " :: " + method.getDeclaringClass();
         }
 
         @Override
@@ -619,13 +614,21 @@ public class ObjectEditorWindow extends JFrame {
 
         @Override
         protected String getString() {
+            final StringBuilder sb = new StringBuilder();
+
+            if (field != null) {
+                sb.append(field.getName());
+            } else if (index >= 0) {
+                sb.append("[").append(index).append("]");
+            } else {
+                sb.append("-");
+            }
+            sb.append(" : ").append(clas.getSimpleName());
 
             if (clas.isPrimitive() || clas == String.class || object == null) {
-                return (field == null ? ("[" + index + "]") : field.getName()) + " : " + clas.getSimpleName()
-                        + " = " + object;
-            } else {
-                return (field == null ? ("[" + index + "]") : field.getName()) + " : " + clas.getSimpleName();
+                sb.append(" = ").append(object);
             }
+            return sb.toString();
         }
 
         @Override
@@ -659,7 +662,6 @@ public class ObjectEditorWindow extends JFrame {
         protected String getStatusText() {
             return "right click to expand";
         }
-
     }
 
     private static class TreeRenderer extends Tree.Renderer<Node> {
@@ -688,15 +690,18 @@ public class ObjectEditorWindow extends JFrame {
         public void handle(Node node, boolean sel, boolean expanded, boolean leaf, int row, boolean hasFocus) {
 
             if (node instanceof MethodNode) {
-                setIcon(((MethodNode) node).method.getParameterCount() == 0 ? iconMethod : iconMethodSetter);
+                final MethodNode mnode = (MethodNode) node;
+
+                setIcon(mnode.method.getParameterCount() == 0 ? iconMethod : iconMethodSetter);
 
             } else if (node instanceof GenericNode) {
+                final GenericNode gnode = (GenericNode) node;
 
-                if (((GenericNode) node).clas.isPrimitive()) {
+                if (gnode.clas.isPrimitive()) {
                     setIcon(iconPrimitive);
-                } else if (((GenericNode) node).object == null) {
+                } else if (gnode.object == null) {
                     setIcon(iconObjectNull);
-                } else if (((GenericNode) node).object instanceof Throwable) {
+                } else if (gnode.object instanceof Throwable) {
                     setIcon(iconThrowable);
                 } else {
                     setIcon(iconObject);
@@ -704,7 +709,6 @@ public class ObjectEditorWindow extends JFrame {
 
             } else if (node instanceof CommandNode) {
                 setIcon(iconCommand);
-
             }
         }
 
@@ -774,28 +778,17 @@ public class ObjectEditorWindow extends JFrame {
         dispose();
     }
 
+    // == Generate nodes
+
+    private static class NodeMap extends IdentityHashMap<Object, Node> {
+    }
+
     private void generateNodes(GenericNode root) {
-
-        generateNodes(root, new IdentityHashMap<Object, ObjectEditorWindow.Node>(),
-                new IdentityHashMap<Object, ObjectEditorWindow.Node>(), 0);
+        generateNodes(root, new NodeMap(), new NodeMap(), 0);
     }
 
-    private void generateNodes(GenericNode root, IdentityHashMap<Object, Node> parents,
-            IdentityHashMap<Object, Node> nodes, int depth) {
-
-        final Object rootObject = root.object;
-        if (rootObject == null) return;
-
-        generateNodes(root, parents, nodes, root.clas, depth);
-    }
-
-    private Class<?> pickClass(Class<?> superclass, Object object) {
-        if (superclass.isPrimitive() || object == null) return superclass;
-        return object.getClass();
-    }
-
-    private void generateNodes(GenericNode root, IdentityHashMap<Object, Node> parents,
-            IdentityHashMap<Object, Node> renodes, Class<?> c, int depth) {
+    private void generateNodes(GenericNode root, NodeMap parents, NodeMap renodes, int depth) {
+        final Class<?> c = root.clas;
 
         if (c == null || c.isPrimitive()) return;
 
@@ -821,7 +814,7 @@ public class ObjectEditorWindow extends JFrame {
                 final GenericNode node = new GenericNode(rootObject, i, cc, element);
                 root.add(node);
 
-                generateNodesPropagate(cc, element, node, parents, renodes, depth);
+                generateNodesPropagate(node, parents, renodes, depth);
             }
             return;
         }
@@ -854,7 +847,7 @@ public class ObjectEditorWindow extends JFrame {
             final GenericNode node = new GenericNode(rootObject, field, cc, object);
             root.add(node);
 
-            generateNodesPropagate(cc, object, node, parents, renodes, depth);
+            generateNodesPropagate(node, parents, renodes, depth);
         }
 
         final boolean optionShowMethodsNonVoid = options.contains(Option.ShowMethodsNonVoid);
@@ -878,36 +871,38 @@ public class ObjectEditorWindow extends JFrame {
 
                 node.add(returnNode);
 
-                generateNodesPropagate(returnNode.clas, returnNode.object, returnNode, parents, renodes, depth);
+                generateNodesPropagate(returnNode, parents, renodes, depth);
             }
         }
     }
 
-    private void generateNodesPropagate(final Class<?> c, final Object element,
-            final Node node, IdentityHashMap<Object, Node> parents, IdentityHashMap<Object, Node> renodes, int depth) {
+    private void generateNodesPropagate(final GenericNode node, NodeMap parents, NodeMap renodes, int depth) {
+        final Class<?> c = node.clas;
+        final Object element = node.object;
 
         if (c.isPrimitive() || element == null) {
 
         } else if (parents.containsKey(element)) {
-
-            final CommandNode child = new CommandNode("parent", parents.get(element));
-            node.add(child);
+            node.add(new CommandNode("parent", parents.get(element)));
 
         } else if (renodes.containsKey(element)) {
-
-            final CommandNode child = new CommandNode("reference", renodes.get(element));
-            node.add(child);
+            node.add(new CommandNode("reference", renodes.get(element)));
 
         } else {
             parents.put(element, node);
             if (!options.contains(Option.ShowDuplicates)) renodes.put(element, node);
-            generateNodes((GenericNode) node, parents, renodes, depth + 1);
+            generateNodes(node, parents, renodes, depth + 1);
             parents.remove(element);
         }
     }
 
+    private Class<?> pickClass(Class<?> superclass, Object object) {
+        if (superclass.isPrimitive() || object == null) return superclass;
+        return object.getClass();
+    }
+
     private static String toDefaultString(Object object) {
-        if (object == null) return "@" + System.identityHashCode(object);
+        if (object == null) return "null";
         return object.getClass().getName() + "@" + System.identityHashCode(object);
     }
 
@@ -1066,6 +1061,8 @@ public class ObjectEditorWindow extends JFrame {
     }
 
     // ===
+
+    // TODO rename
 
     public interface Function<T, R> {
         R apply(T t);
